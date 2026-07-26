@@ -1,0 +1,77 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String         @id @default(uuid())
+  email         String         @unique
+  passwordHash  String
+  name          String
+  createdAt     DateTime       @default(now())
+  ownedBoards   Board[]        @relation("BoardOwner")
+  memberships   BoardMember[]
+  refreshTokens RefreshToken[]
+}
+
+// Refresh tokens are stored hashed, one row per active session, so a
+// single session can be revoked (e.g. on logout) without killing all
+// of a user's other sessions.
+model RefreshToken {
+  id        String   @id @default(uuid())
+  tokenHash String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  revoked   Boolean  @default(false)
+}
+
+model Board {
+  id        String        @id @default(uuid())
+  title     String
+  ownerId   String
+  owner     User          @relation("BoardOwner", fields: [ownerId], references: [id])
+  columns   Column[]
+  members   BoardMember[]
+  createdAt DateTime      @default(now())
+}
+
+enum Role {
+  EDITOR
+  VIEWER
+}
+
+model BoardMember {
+  id      String @id @default(uuid())
+  boardId String
+  userId  String
+  role    Role   @default(EDITOR)
+  board   Board  @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  user    User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([boardId, userId])
+}
+
+model Column {
+  id       String @id @default(uuid())
+  title    String
+  order    Int
+  boardId  String
+  board    Board  @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  tasks    Task[]
+}
+
+model Task {
+  id        String   @id @default(uuid())
+  title     String
+  order     Int
+  columnId  String
+  column    Column   @relation(fields: [columnId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
