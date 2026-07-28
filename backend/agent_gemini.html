@@ -1,0 +1,595 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Generator ⇄ Reviewer — Content Pipeline</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap');
+
+  :root{
+    --ink:        #10192B;
+    --ink-2:      #16223B;
+    --card:       #1C2A47;
+    --card-line:  #2C3D63;
+    --chalk:      #EDF1F7;
+    --chalk-dim:  #94A4C4;
+    --yellow:     #FFC94A;
+    --mint:       #4FD1B5;
+    --coral:      #FF6F6F;
+    --radius:     14px;
+  }
+
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:
+      radial-gradient(circle at 15% 0%, #1a2747 0%, transparent 55%),
+      radial-gradient(circle at 85% 100%, #172140 0%, transparent 50%),
+      var(--ink);
+    color:var(--chalk);
+    font-family:'IBM Plex Sans', sans-serif;
+    min-height:100vh;
+    padding:32px 20px 80px;
+  }
+
+  .wrap{max-width:920px;margin:0 auto;}
+
+  header{
+    display:flex;
+    flex-direction:column;
+    gap:6px;
+    margin-bottom:28px;
+    border-bottom:1px solid var(--card-line);
+    padding-bottom:22px;
+  }
+  .eyebrow{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:12px;
+    letter-spacing:.14em;
+    text-transform:uppercase;
+    color:var(--mint);
+  }
+  h1{
+    font-family:'Space Grotesk',sans-serif;
+    font-size:clamp(26px,4vw,36px);
+    font-weight:700;
+    margin:0;
+    line-height:1.15;
+  }
+  h1 span{color:var(--yellow);}
+  .sub{color:var(--chalk-dim);font-size:14.5px;max-width:60ch;margin-top:2px;}
+
+  /* ---------- Form ---------- */
+  .panel{
+    background:var(--card);
+    border:1px solid var(--card-line);
+    border-radius:var(--radius);
+    padding:20px;
+    margin-bottom:28px;
+  }
+  .form-row{
+    display:flex;
+    gap:14px;
+    flex-wrap:wrap;
+    align-items:flex-end;
+  }
+  .field{display:flex;flex-direction:column;gap:6px;}
+  .field label{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:11px;
+    letter-spacing:.08em;
+    text-transform:uppercase;
+    color:var(--chalk-dim);
+  }
+  select,input[type=text]{
+    background:var(--ink-2);
+    border:1px solid var(--card-line);
+    color:var(--chalk);
+    border-radius:8px;
+    padding:10px 12px;
+    font-size:14.5px;
+    font-family:'IBM Plex Sans',sans-serif;
+    outline:none;
+  }
+  select:focus,input[type=text]:focus{border-color:var(--mint);}
+  #topic{min-width:260px;flex:1;}
+  #grade{min-width:110px;}
+
+  button.run{
+    background:var(--yellow);
+    color:#1B1404;
+    border:none;
+    border-radius:8px;
+    padding:11px 22px;
+    font-weight:600;
+    font-size:14.5px;
+    cursor:pointer;
+    font-family:'Space Grotesk',sans-serif;
+    transition:transform .12s ease, box-shadow .12s ease;
+  }
+  button.run:hover{transform:translateY(-1px);box-shadow:0 6px 18px rgba(255,201,74,.25);}
+  button.run:disabled{opacity:.5;cursor:not-allowed;transform:none;box-shadow:none;}
+  button.run:focus-visible{outline:2px solid var(--mint);outline-offset:2px;}
+
+  .error-msg{
+    color:var(--coral);
+    font-size:13.5px;
+    margin-top:12px;
+    font-family:'IBM Plex Mono',monospace;
+  }
+
+  /* ---------- Pipeline rail ---------- */
+  .rail{
+    display:flex;
+    align-items:center;
+    gap:0;
+    margin-bottom:8px;
+    overflow-x:auto;
+    padding-bottom:4px;
+  }
+  .rail-step{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    flex-shrink:0;
+    opacity:.35;
+    transition:opacity .3s ease;
+  }
+  .rail-step.active,.rail-step.done{opacity:1;}
+  .rail-num{
+    width:30px;height:30px;
+    border-radius:50%;
+    border:1.5px solid var(--card-line);
+    display:flex;align-items:center;justify-content:center;
+    font-family:'IBM Plex Mono',monospace;
+    font-size:12.5px;
+    flex-shrink:0;
+    background:var(--ink-2);
+    transition:background .3s ease, border-color .3s ease;
+  }
+  .rail-step.active .rail-num{border-color:var(--yellow);color:var(--yellow);}
+  .rail-step.done .rail-num{border-color:var(--mint);background:var(--mint);color:#052E27;}
+  .rail-label{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:12px;
+    letter-spacing:.04em;
+    color:var(--chalk-dim);
+    white-space:nowrap;
+  }
+  .rail-step.active .rail-label,.rail-step.done .rail-label{color:var(--chalk);}
+  .rail-connector{
+    width:34px;height:1px;
+    background:var(--card-line);
+    flex-shrink:0;
+    margin:0 6px;
+  }
+
+  /* ---------- Stage cards ---------- */
+  .stage{
+    background:var(--card);
+    border:1px solid var(--card-line);
+    border-radius:var(--radius);
+    margin-bottom:18px;
+    overflow:hidden;
+    animation:rise .35s ease both;
+  }
+  @keyframes rise{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:translateY(0);}}
+  .stage-head{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    padding:14px 18px;
+    border-bottom:1px solid var(--card-line);
+  }
+  .stage-head h2{
+    font-family:'Space Grotesk',sans-serif;
+    font-size:16px;
+    margin:0;
+    display:flex;align-items:center;gap:8px;
+  }
+  .tag{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:10.5px;
+    letter-spacing:.08em;
+    text-transform:uppercase;
+    color:var(--ink);
+    background:var(--chalk-dim);
+    padding:3px 8px;
+    border-radius:20px;
+  }
+  .tag.gen{background:var(--yellow);}
+  .tag.rev{background:var(--mint);}
+  .stage-body{padding:18px;}
+
+  .loading{
+    display:flex;align-items:center;gap:10px;
+    color:var(--chalk-dim);
+    font-family:'IBM Plex Mono',monospace;
+    font-size:13px;
+    padding:4px 0;
+  }
+  .dot{
+    width:7px;height:7px;border-radius:50%;
+    background:var(--mint);
+    animation:pulse 1s ease-in-out infinite;
+  }
+  @keyframes pulse{0%,100%{opacity:.25;}50%{opacity:1;}}
+
+  .explanation{
+    font-size:15px;line-height:1.65;
+    color:var(--chalk);
+    margin-bottom:18px;
+    padding:14px 16px;
+    background:var(--ink-2);
+    border-left:3px solid var(--yellow);
+    border-radius:0 8px 8px 0;
+  }
+  .mcq{
+    background:var(--ink-2);
+    border:1px solid var(--card-line);
+    border-radius:10px;
+    padding:14px 16px;
+    margin-bottom:10px;
+  }
+  .mcq:last-child{margin-bottom:0;}
+  .mcq .q{font-weight:600;margin-bottom:8px;font-size:14.5px;}
+  .mcq ul{list-style:none;margin:0;padding:0;display:grid;gap:6px;}
+  .mcq li{
+    font-size:13.5px;color:var(--chalk-dim);
+    padding:6px 10px;border-radius:6px;
+    border:1px solid transparent;
+  }
+  .mcq li.correct{
+    color:var(--mint);
+    border-color:rgba(79,209,181,.4);
+    background:rgba(79,209,181,.08);
+    font-weight:500;
+  }
+
+  /* verdict stamp */
+  .verdict{
+    display:inline-flex;
+    align-items:center;
+    gap:8px;
+    font-family:'Space Grotesk',sans-serif;
+    font-weight:700;
+    font-size:14px;
+    letter-spacing:.06em;
+    text-transform:uppercase;
+    padding:7px 16px;
+    border-radius:6px;
+    border:2px solid currentColor;
+    transform:rotate(-2deg);
+    margin-bottom:14px;
+  }
+  .verdict.pass{color:var(--mint);}
+  .verdict.fail{color:var(--coral);}
+
+  .feedback-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px;}
+  .feedback-list li{
+    font-size:13.5px;
+    line-height:1.5;
+    padding:10px 12px;
+    background:var(--ink-2);
+    border-radius:8px;
+    border-left:3px solid var(--coral);
+    color:var(--chalk);
+  }
+  .verdict.pass ~ .feedback-list li{border-left-color:var(--mint);}
+
+  .io-toggle{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:11px;
+    color:var(--chalk-dim);
+    cursor:pointer;
+    background:none;border:1px solid var(--card-line);
+    border-radius:6px;padding:5px 10px;
+    margin-top:14px;
+  }
+  .io-toggle:hover{color:var(--chalk);border-color:var(--chalk-dim);}
+  pre.raw{
+    background:var(--ink);
+    border:1px solid var(--card-line);
+    border-radius:8px;
+    padding:12px;
+    font-size:11.5px;
+    color:var(--chalk-dim);
+    overflow-x:auto;
+    margin-top:10px;
+    display:none;
+    font-family:'IBM Plex Mono',monospace;
+  }
+  pre.raw.show{display:block;}
+
+  footer{
+    text-align:center;
+    color:var(--chalk-dim);
+    font-size:12px;
+    font-family:'IBM Plex Mono',monospace;
+    margin-top:36px;
+  }
+
+  @media (prefers-reduced-motion: reduce){
+    *{animation:none !important;transition:none !important;}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <span class="eyebrow">Two-Agent Pipeline · Generator → Reviewer → Refine</span>
+    <h1>Draft it. <span>Grade it.</span> Fix it once.</h1>
+    <p class="sub">Enter a grade and a topic. The Generator Agent drafts an explanation and multiple-choice questions; the Reviewer Agent checks age-appropriateness, correctness, and clarity; if it fails, the Generator gets one refinement pass with that feedback embedded.</p>
+  </header>
+
+  <div class="panel">
+    <div class="form-row">
+      <div class="field">
+        <label for="grade">Grade</label>
+        <select id="grade">
+          <option value="1">Grade 1</option>
+          <option value="2">Grade 2</option>
+          <option value="3">Grade 3</option>
+          <option value="4" selected>Grade 4</option>
+          <option value="5">Grade 5</option>
+          <option value="6">Grade 6</option>
+          <option value="7">Grade 7</option>
+          <option value="8">Grade 8</option>
+        </select>
+      </div>
+      <div class="field" style="flex:1;">
+        <label for="topic">Topic</label>
+        <input type="text" id="topic" placeholder="e.g. Types of angles" value="Types of angles">
+      </div>
+      <button class="run" id="runBtn">Run pipeline</button>
+    </div>
+    <div class="form-row" style="margin-top:14px;">
+      <div class="field" style="flex:1;">
+        <label for="apiKey">Google AI Studio API key — free, no card required (get one at aistudio.google.com/apikey). Used only in your browser, never stored or sent anywhere else.</label>
+        <input type="password" id="apiKey" placeholder="AIza...">
+      </div>
+    </div>
+    <div id="formError"></div>
+  </div>
+
+  <div class="rail" id="rail"></div>
+
+  <div id="stages"></div>
+
+  <footer>generator agent · reviewer agent · one refinement pass — powered by Google Gemini (free tier)</footer>
+</div>
+
+<script>
+const railEl = document.getElementById('rail');
+const stagesEl = document.getElementById('stages');
+const runBtn = document.getElementById('runBtn');
+const formError = document.getElementById('formError');
+
+const RAIL_STEPS = [
+  {id:'gen1', label:'Generate'},
+  {id:'rev1', label:'Review'},
+  {id:'gen2', label:'Refine'},
+  {id:'rev2', label:'Final review'},
+];
+
+function renderRail(activeIndex, includeRefine){
+  const steps = includeRefine ? RAIL_STEPS : RAIL_STEPS.slice(0,2);
+  railEl.innerHTML = steps.map((s,i)=>{
+    let cls = 'rail-step';
+    if(i < activeIndex) cls += ' done';
+    else if(i === activeIndex) cls += ' active';
+    return `<div class="${cls}" data-id="${s.id}">
+              <div class="rail-num">${i<activeIndex?'✓':i+1}</div>
+              <div class="rail-label">${s.label}</div>
+            </div>` + (i < steps.length-1 ? '<div class="rail-connector"></div>' : '');
+  }).join('');
+}
+
+function markRailDone(uptoIndex, includeRefine){
+  renderRail(uptoIndex+1, includeRefine);
+}
+
+// ---------- Anthropic API call helper ----------
+// ---------- Gemini API call helper ----------
+const GEMINI_MODEL = "gemini-2.5-flash";
+
+async function callClaude(system, userText){
+  const apiKey = document.getElementById('apiKey').value.trim();
+  if(!apiKey){
+    throw new Error("Enter your Google AI Studio API key above first.");
+  }
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${encodeURIComponent(apiKey)}`;
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      system_instruction: { parts: [{ text: system }] },
+      contents: [{ role: "user", parts: [{ text: userText }] }],
+      generationConfig: {
+        responseMimeType: "application/json",
+        temperature: 0.4
+      }
+    })
+  });
+  if(!response.ok){
+    const errBody = await response.text().catch(()=> "");
+    throw new Error("API request failed (" + response.status + "). " + errBody.slice(0,200));
+  }
+  const data = await response.json();
+  const candidate = data.candidates && data.candidates[0];
+  const parts = candidate && candidate.content && candidate.content.parts;
+  const raw = (parts || []).map(p => p.text || "").join("\n").trim();
+  const cleaned = raw.replace(/^```json\s*/i, "").replace(/^```\s*/, "").replace(/```\s*$/, "").trim();
+  try{
+    return JSON.parse(cleaned);
+  }catch(e){
+    throw new Error("Could not parse structured JSON from model response.");
+  }
+}
+
+// ---------- Generator Agent ----------
+// Input:  { grade, topic, feedback? }
+// Output: { explanation, mcqs: [{question, options[4], answer}] }
+async function generatorAgent(input){
+  const system = `You are the Generator Agent in an educational content pipeline.
+Responsibility: generate a draft explanation and multiple-choice questions for a given grade and topic.
+Rules:
+- Language complexity must match the stated grade level (vocabulary, sentence length, examples).
+- Concepts must be factually and conceptually correct.
+- Output structure must always match the schema exactly, with no extra keys.
+- Produce exactly 3 MCQs, each with exactly 4 options and one correct answer.
+- If refinement feedback is provided, you MUST address every point of feedback in the new draft.
+Return ONLY valid JSON, no markdown fences, no commentary, matching exactly this schema:
+{"explanation": string, "mcqs": [{"question": string, "options": [string,string,string,string], "answer": string}]}
+The "answer" field must be the exact text of one of the four options (not a letter).`;
+
+  let userText = `Grade: ${input.grade}\nTopic: "${input.topic}"`;
+  if(input.feedback && input.feedback.length){
+    userText += `\n\nA reviewer evaluated a previous draft and returned this feedback. Revise fully to address every point:\n- ${input.feedback.join("\n- ")}`;
+  }
+  return await callClaude(system, userText);
+}
+
+// ---------- Reviewer Agent ----------
+// Input:  content JSON from Generator Agent (+ grade/topic context)
+// Output: { status: "pass"|"fail", feedback: [string] }
+async function reviewerAgent(content, grade, topic){
+  const system = `You are the Reviewer Agent in an educational content pipeline.
+Responsibility: evaluate Generator Agent output against three criteria: age appropriateness, conceptual correctness, and clarity.
+Rules:
+- Be strict and specific. Reference exact sentences or question numbers in your feedback.
+- status must be "fail" if there is any age-inappropriate language, any conceptual error, or any ambiguous/unclear question or explanation for the stated grade.
+- status must be "pass" only if all three criteria are solidly met.
+- feedback must be a list of short, specific, actionable strings (empty list if status is "pass").
+Return ONLY valid JSON, no markdown fences, no commentary, matching exactly this schema:
+{"status": "pass" | "fail", "feedback": [string]}`;
+
+  const userText = `Grade: ${grade}\nTopic: "${topic}"\n\nContent to review (JSON):\n${JSON.stringify(content, null, 2)}`;
+  return await callClaude(system, userText);
+}
+
+// ---------- Rendering helpers ----------
+function renderMcqs(mcqs){
+  return mcqs.map((m,i) => `
+    <div class="mcq">
+      <div class="q">${i+1}. ${escapeHtml(m.question)}</div>
+      <ul>
+        ${m.options.map(opt => `<li class="${opt === m.answer ? 'correct' : ''}">${escapeHtml(opt)}${opt === m.answer ? ' ✓' : ''}</li>`).join('')}
+      </ul>
+    </div>`).join('');
+}
+
+function escapeHtml(str){
+  const d = document.createElement('div');
+  d.textContent = str ?? '';
+  return d.innerHTML;
+}
+
+function genStageHtml(title, tagLabel, content, rawKey){
+  return `
+    <div class="stage-body">
+      <div class="explanation">${escapeHtml(content.explanation)}</div>
+      ${renderMcqs(content.mcqs)}
+      <button class="io-toggle" onclick="toggleRaw('${rawKey}')">view raw JSON</button>
+      <pre class="raw" id="${rawKey}">${escapeHtml(JSON.stringify(content, null, 2))}</pre>
+    </div>`;
+}
+
+function revStageHtml(review, rawKey){
+  return `
+    <div class="stage-body">
+      <div class="verdict ${review.status === 'pass' ? 'pass' : 'fail'}">${review.status}</div>
+      <ul class="feedback-list">
+        ${review.feedback.length ? review.feedback.map(f => `<li>${escapeHtml(f)}</li>`).join('') : '<li>No issues found.</li>'}
+      </ul>
+      <button class="io-toggle" onclick="toggleRaw('${rawKey}')">view raw JSON</button>
+      <pre class="raw" id="${rawKey}">${escapeHtml(JSON.stringify(review, null, 2))}</pre>
+    </div>`;
+}
+
+function toggleRaw(id){
+  document.getElementById(id).classList.toggle('show');
+}
+window.toggleRaw = toggleRaw;
+
+function addStage(id, title, tagClass, tagLabel){
+  const el = document.createElement('div');
+  el.className = 'stage';
+  el.id = id;
+  el.innerHTML = `
+    <div class="stage-head">
+      <h2>${title}</h2>
+      <span class="tag ${tagClass}">${tagLabel}</span>
+    </div>
+    <div class="stage-body">
+      <div class="loading"><span class="dot"></span> Working…</div>
+    </div>`;
+  stagesEl.appendChild(el);
+  return el;
+}
+
+// ---------- Pipeline orchestration ----------
+async function runPipeline(){
+  const grade = document.getElementById('grade').value;
+  const topic = document.getElementById('topic').value.trim();
+  formError.innerHTML = '';
+
+  if(!topic){
+    formError.innerHTML = '<div class="error-msg">Enter a topic to continue.</div>';
+    return;
+  }
+  if(!document.getElementById('apiKey').value.trim()){
+    formError.innerHTML = '<div class="error-msg">Enter your Google AI Studio API key to continue.</div>';
+    return;
+  }
+
+  runBtn.disabled = true;
+  runBtn.textContent = 'Running…';
+  stagesEl.innerHTML = '';
+  let includeRefine = false;
+  renderRail(0, includeRefine);
+
+  try{
+    // Stage 1: Generator
+    const s1 = addStage('stage-gen1', '1 · Generator Agent — Draft', 'gen', 'generator');
+    const draft = await generatorAgent({ grade, topic });
+    s1.querySelector('.stage-body').innerHTML = genStageHtml('Draft', 'generator', draft, 'raw-gen1');
+    markRailDone(0, includeRefine);
+
+    // Stage 2: Reviewer
+    const s2 = addStage('stage-rev1', '2 · Reviewer Agent — Evaluation', 'rev', 'reviewer');
+    const review = await reviewerAgent(draft, grade, topic);
+    s2.querySelector('.stage-body').innerHTML = revStageHtml(review, 'raw-rev1');
+    markRailDone(1, includeRefine);
+
+    if(review.status === 'fail'){
+      includeRefine = true;
+      renderRail(2, includeRefine);
+
+      // Stage 3: Refinement (Generator re-run with feedback, ONE pass)
+      const s3 = addStage('stage-gen2', '3 · Generator Agent — Refined (feedback embedded)', 'gen', 'generator');
+      const refined = await generatorAgent({ grade, topic, feedback: review.feedback });
+      s3.querySelector('.stage-body').innerHTML = genStageHtml('Refined', 'generator', refined, 'raw-gen2');
+      markRailDone(2, includeRefine);
+
+      // Stage 4: Final review of the refined content (reporting only — no further regeneration)
+      const s4 = addStage('stage-rev2', '4 · Reviewer Agent — Final Check', 'rev', 'reviewer');
+      const finalReview = await reviewerAgent(refined, grade, topic);
+      s4.querySelector('.stage-body').innerHTML = revStageHtml(finalReview, 'raw-rev2');
+      markRailDone(3, includeRefine);
+    }
+  }catch(err){
+    formError.innerHTML = `<div class="error-msg">Error: ${escapeHtml(err.message)}</div>`;
+  }finally{
+    runBtn.disabled = false;
+    runBtn.textContent = 'Run pipeline';
+  }
+}
+
+runBtn.addEventListener('click', runPipeline);
+renderRail(0, false);
+</script>
+</body>
+</html>
